@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Body, status
+from fastapi import APIRouter, Body, HTTPException, status
 
 from src.core.domain.core_domain import T, get_collection_model
+from src.bank.infrastructure.db.bank_db import BankDB
 from src.bank.domain.bank_domain import BankModel
 
 
@@ -21,7 +22,9 @@ CollectionModel: type[T] = get_collection_model(BankModel)
         response_model_by_alias=False,
         )
 async def list_banks():
-    return CollectionModel(data=[BankModel(name="Bank of Mexico")])
+    bank_data = await BankDB().get_all()
+    collection_demo = CollectionModel(data=bank_data)
+    return collection_demo
 
 
 @router.post(
@@ -32,9 +35,9 @@ async def list_banks():
         status_code=status.HTTP_201_CREATED,
         )
 async def create_bank(bank: BankModel = Body(...)):
-    print(bank.model_dump(by_alias=True, exclude=["-id"]))
-    return bank
-
+    db_object = BankDB()
+    bank_created = await db_object.create(bank)
+    return await db_object.get_one(bank_created.inserted_id)
 
 @router.get(
         "/{bank_id}",
@@ -43,8 +46,7 @@ async def create_bank(bank: BankModel = Body(...)):
         response_model_by_alias=False,
         )
 async def get_bank(bank_id: str):
-    print(bank_id)
-    return BankModel(name="Bank of Mexico")
+    return await BankDB().get_one(bank_id)
 
 
 @router.put(
@@ -54,6 +56,11 @@ async def get_bank(bank_id: str):
         response_model_by_alias=False,
         )
 async def update_bank(bank_id: str, bank: BankModel = Body(...)):
-    print(bank_id)
-    print(bank.model_dump(by_alias=True, exclude=["-id"]))
-    return bank
+    db_object = BankDB()
+    bank_object = await db_object.get_one(bank_id)
+    bank._set_updated_at()
+    data_raw = {k: v for k, v in bank.model_dump(by_alias=True).items() if v is not None}
+    if data_raw:
+        return await BankDB().update(bank_id, data_raw)
+
+    return bank_object
